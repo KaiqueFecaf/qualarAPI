@@ -2,35 +2,60 @@ version: '3.8'
 
 services:
   api:
-    build: .
+    build: 
+      context: .
+      target: builder  # Multi-stage build
+    environment:
+      - APP_ENV=production
     ports:
       - "8000:8000"
     env_file:
       - .env
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - cetesb-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   mysql:
-    image: mysql:8.0
-    env_file:
-      - file.env
+    image: mysql:8.0-oracle  # More stable than plain mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql/conf.d:/etc/mysql/conf.d  # Custom configs
     ports:
       - "3306:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 10s
       retries: 10
+    networks:
+      - cetesb-net
 
   adminer:
-    image: adminer
+    image: adminer:4.8.1  # Pinned version
     restart: always
     ports:
       - "8080:8080"
     depends_on:
       - mysql
+    networks:
+      - cetesb-net
 
 volumes:
   mysql_data:
+
+networks:
+  cetesb-net:
+    driver: bridge
